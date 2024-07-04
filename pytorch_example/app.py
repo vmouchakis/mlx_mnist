@@ -14,6 +14,7 @@ device = torch.device(device)
 lr = 1e-3
 epochs = 50
 batch_size = 64
+comp = False
 
 trainset = torchvision.datasets.MNIST(
     root="data",
@@ -58,6 +59,11 @@ class Net(nn.Module):
         return output
 
 model = Net().to(device)
+if comp:
+    # The operator 'aten::native_dropout' is not currently implemented for the MPS device
+    # As a temporary fix, you can set the environment variable `PYTORCH_ENABLE_MPS_FALLBACK=1`
+    # to use the CPU as a fallback for this op
+    model = torch.compile(model, mode='default', backend='aot_eager')
 optimizer = optim.Adadelta(model.parameters(), lr=lr)
 
 mlflow.set_experiment("MNIST Experiment (PyTorch)")
