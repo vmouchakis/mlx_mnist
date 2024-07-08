@@ -1,54 +1,66 @@
 import mlx.core as mx
 import mlx.nn as nn
 import mlx.optimizers as optim
+import math
 from tqdm import tqdm
 import mlflow
-from mlp import MLP
-from utils import *
-from data import load_data
+from net import Net
+from functools import partial
+from utils import loss_and_acc
+from data import DataLoader, Dataset, MnistDataset, SplitDataset
 
 
-num_layers = 2
 hidden_dim = 64
 num_classes = 10
-batch_size = 64
-num_epochs = 50
-learning_rate = 1e-1
+batch_size = 32
+epochs = 50
+learning_rate = 1e-3
 
-train_images, train_labels, test_images, test_labels = map(
-    mx.array, load_data()
-)
+data = MnistDataset('data/')
 
-model = MLP(num_layers, train_images.shape[-1], hidden_dim, num_classes)
+ds = SplitDataset(data, training_split=0.9)
+training_data_loader = DataLoader(ds.training_data, batch_size=batch_size)
+validation_data_loader = DataLoader(ds.validation_data, batch_size=batch_size)
+test_data_loader = DataLoader(ds.test_dataset, batch_size=batch_size)
+
+model = Net(data.channels(), data.dim(), len(data.labels()))
+optimizer = optim.Adam(learning_rate)
+state = [model.state, optimizer.state, mx.random.state]
+
 mx.eval(model.parameters())
 
-import sys; sys.exit()
-loss_and_grad_fn = nn.value_and_grad(model, loss_fn)
-
-optimizer = optim.SGD(learning_rate=learning_rate)
+@partial(mx.compile, inputs=state, outputs=state)
+def step(X, y):
+    train_step_fn = nn.value_and_grad(model, loss_and_acc)
+    (loss, acc), grads = train_step_fn(model, X, y)
+    optimizer.update(model, grads)
+    return loss, acc
 
 mlflow.set_experiment("MNIST Experiment")
 
 with mlflow.start_run():
-    mlflow.log_param("num_layers", num_layers)
-    mlflow.log_param("hidden_dim", hidden_dim)
-    mlflow.log_param("num_classes", num_classes)
+    mlflow.log_param("channels", data.channels())
+    mlflow.log_param("dim", data.dim())
+    mlflow.log_param("num_classes", data.labels())
     mlflow.log_param("batch_size", batch_size)
-    mlflow.log_param("num_epochs", num_epochs)
+    mlflow.log_param("num_epochs", epochs)
     mlflow.log_param("learning_rate", learning_rate)
 
-    for e in tqdm(range(num_epochs)):
-        for X, y in batch_iterate(batch_size, train_images, train_labels):
-            loss, grads = loss_and_grad_fn(model, X, y)
+    total_loss = 0.0
+    for i in tqdm(range(epochs)):
+        total_loss = 0.0
+        accuracy = 0
+        model.train()
 
-            optimizer.update(model, grads)
+        for _, (X, y) in enumerate(training_data_loader):
+            loss, acc = step(X, y)
+            total_loss += loss
+            accuracy += acc
+        
+        avg_loss = total_loss.item() / len(training_data_loader)
+        accuracy_pct = (accuracy.item() / len(training_data_loader.dataset)) * 100
+        mlflow.log_metric("loss", avg_loss, step=i)
+        mlflow.log_metric("accuracy", accuracy_pct, step=i)
+        print(f"training epoch {i + 1} avg loss: {avg_loss} accuracy: {accuracy_pct:0.3f}%")
 
-            mx.eval(model.parameters(), optimizer.state)
-
-        accuracy = eval_fn(model, test_images, test_labels)
-        print(f"Epoch {e}: Test accuracy {accuracy.item():.3f} | Loss {loss.item():.3f}")
-        mlflow.log_metric("loss", loss.item(), step=e)
-        mlflow.log_metric("test_accuracy", accuracy.item(), step=e)
-
-# mlflow.log_artifact('mnist_model.params')
 model.save_weights('mnist_model.npz')
