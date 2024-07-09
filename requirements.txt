@@ -1,6 +1,5 @@
 mlx
 tqdm
-python-mnist
 numpy
 mlflow
 torch

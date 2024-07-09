@@ -7,12 +7,12 @@ import mlflow
 from net import Net
 from functools import partial
 from utils import loss_and_acc
-from data import DataLoader, Dataset, MnistDataset, SplitDataset
+from data import DataLoader, MnistDataset, SplitDataset
 
 
-batch_size = 32
+batch_size = 64
 epochs = 50
-learning_rate = 1e-3
+learning_rate = 1e-4
 
 data = MnistDataset('data/')
 
@@ -24,6 +24,8 @@ test_data_loader = DataLoader(ds.test_dataset, batch_size=batch_size)
 model = Net(data.channels(), data.dim(), len(data.labels()))
 optimizer = optim.Adam(learning_rate)
 state = [model.state, optimizer.state, mx.random.state]
+
+mx.eval(model.parameters())
 
 @partial(mx.compile, inputs=state, outputs=state)
 def step(X, y):
