@@ -15,6 +15,9 @@ python app.py
 python pytorch_example/app.py
 ```
 
+## MLflow Integration
+We use MLflow to track accuracies and losses during model training and evaluation
+
 
 ## Acknowledgments
 Thanks to [mikecvet](https://github.com/mikecvet) for [this](https://github.com/mikecvet/cnn) implementation, which greatly assisted in the development of this project.
