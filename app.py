@@ -10,8 +10,6 @@ from utils import loss_and_acc
 from data import DataLoader, Dataset, MnistDataset, SplitDataset
 
 
-hidden_dim = 64
-num_classes = 10
 batch_size = 32
 epochs = 50
 learning_rate = 1e-3
@@ -26,8 +24,6 @@ test_data_loader = DataLoader(ds.test_dataset, batch_size=batch_size)
 model = Net(data.channels(), data.dim(), len(data.labels()))
 optimizer = optim.Adam(learning_rate)
 state = [model.state, optimizer.state, mx.random.state]
-
-mx.eval(model.parameters())
 
 @partial(mx.compile, inputs=state, outputs=state)
 def step(X, y):
@@ -47,7 +43,7 @@ with mlflow.start_run():
     mlflow.log_param("learning_rate", learning_rate)
 
     total_loss = 0.0
-    for i in tqdm(range(epochs)):
+    for epoch in tqdm(range(epochs)):
         total_loss = 0.0
         accuracy = 0
         model.train()
@@ -59,8 +55,23 @@ with mlflow.start_run():
         
         avg_loss = total_loss.item() / len(training_data_loader)
         accuracy_pct = (accuracy.item() / len(training_data_loader.dataset)) * 100
-        mlflow.log_metric("loss", avg_loss, step=i)
-        mlflow.log_metric("accuracy", accuracy_pct, step=i)
-        print(f"training epoch {i + 1} avg loss: {avg_loss} accuracy: {accuracy_pct:0.3f}%")
+        mlflow.log_metric("loss", avg_loss, step=epoch)
+        mlflow.log_metric("accuracy", accuracy_pct, step=epoch)
+        print(f"training epoch {epoch + 1} avg loss: {avg_loss} accuracy: {accuracy_pct:0.3f}%")
+    
+        if (epoch + 1) % 10 == 0:
+            model.eval()
+            total_val_loss = 0.0
+            val_accuracy = 0
+            for _, (X, y) in enumerate(validation_data_loader):
+                val_loss, val_acc = loss_and_acc(model, X, y)
+                total_val_loss += val_loss
+                val_accuracy += val_acc
+            
+            avg_val_loss = total_val_loss.item() / len(validation_data_loader)
+            val_accuracy_pct = (val_accuracy.item() / len(validation_data_loader.dataset)) * 100
+            mlflow.log_metric("val_loss", avg_val_loss, step=epoch)
+            mlflow.log_metric("val_accuracy", val_accuracy_pct, step=epoch)
+            print(f"validation epoch {epoch + 1} avg loss: {avg_val_loss} accuracy: {val_accuracy_pct:0.3f}%")
 
 model.save_weights('mnist_model.npz')
